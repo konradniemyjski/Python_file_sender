@@ -8,7 +8,7 @@ import threading
 import queue
 
 server_name = 'ubuntu'
-
+server_ip = "192.168.8.140"
 
 class FileServer():
 
@@ -101,7 +101,6 @@ class FileServer():
             #     data_item = data_item[data['FileName']]
 
             if data_item[data['FileName']] <= data['Creation_date']:
-                data_item[data['FileName']] = data['Creation_date']
                 # making full file name path for writing purposes
                 fileName = os.path.dirname(os.path.abspath(__file__)) + '/' + (data['Owner'] + '/' + data['FileName'])
                 # creating file object
@@ -173,20 +172,28 @@ class FileServer():
 
         # Main function for receiving data.
         while True:
-
-            while True:
-                # starting accepting data
-                try:
-                    conn, addr = s.accept()
-                except:
-                    pass
-                print("[+] Client connected: ", addr[0])
-                # Starting new thread
-                t = threading.Thread(target=self.ClienThreading, args=((conn, addr)))
-                # launching new thread
-                t.start()
+            # starting accepting data
+            try:
+                conn, addr = s.accept()
+            except:
+                pass
+            print("[+] Client connected: ", addr[0])
+            # Starting new thread for every new client
+            t = threading.Thread(target=self.ClienThreading, args=((conn, addr)))
+            # launching new thread
+            t.start()
 
     def FileUploadToServer(self,path, file, owner, s):
+        '''
+
+        Purpose of this function is to create object with is use for multi threding
+
+        :param path: path of file to send
+        :param file: file name to send
+        :param owner: who is sendind this data
+        :param s: connection parameter
+        :return: nothing
+        '''
         # we are opening it in  read mode so we don't need to decode it in future
         with open((os.path.join(path, file)), "r") as f:
             # reading file
@@ -202,43 +209,40 @@ class FileServer():
             print("[+] Sending file {}.".format(file))
             # using picle to convert json to binaries
             dataToSend['Creation_date'] = os.path.getctime((os.path.join(path, file)))
+            # printing received data for debug purpose
             print(dataToSend)
+            # sendind compress data
             s.sendall(pickle.dumps(dataToSend))
+            # declaration of new variable
             wait_for_data = False
+        # loop for sending data to server
         while True:
             data = s.recv(4096)
-
+            # when then is no data stop listening
             if data is None:
                 break
-
+            # if wait_for_data is true that means that on server is never version of file so write procedure
+            # is beginning
             if wait_for_data:
                 data = pickle.loads(data)
-                with open((os.path.join(path, file)), "r") as f:
+                with open((os.path.join(path, file)), "w") as f:
                     f.writelines(data['Data'])
                 break
-
+            # receiving importation fro server to receive never version of current file or proceed to next
             if data.decode() == 'Sending':
                 wait_for_data = True
             elif data.decode() == 'Next':
                 break
-
+        # printing information that current precede of file is done
         print("[-] Disconnected")
+        #  imitating file sending, random number for 1 to 15 is selecting ant putting ito sleep function parameter
+        # for second
         sleep(randint(1,15))
-        # filepathmd5 = os.path.abspath(os.path.join(path, file))
-        # hasher = md5()
-        # with open(filepathmd5, 'rb') as afile:
-        #     buf = afile.read()
-        #     hasher.update(buf)
-        # filewather[file] = hasher.hexdigest()
-        # # updating file so after shutdown we won't upload the same files
-        # with open('filewather.json', 'w') as outfile:
-        #     print()
-        #     json.dump(filewather, outfile)
 
-
-    def FileSender(self, owner='me', path='.', host="192.168.8.140", port=8000):
-
+    def FileSender(self, owner='me', path='.', host=server_ip, port=8000):
+        # importing md5 algorithm
         from hashlib import md5
+        # printing basic information
         print('Staring function FileSender.')
         print("Parameters : ", owner, path, host, port)
         # connection parameters
@@ -248,38 +252,44 @@ class FileServer():
         data = s.recv(4096)
         print(data.decode())
         print("[+] Connected with Server")
-        # main function used to checking is file are changed`
         # main function used to checking is file are changed
         while True:
             # listing folder looking for content
-
             files = os.listdir(path)
+            # if len of file is equal to zero, client is checking does the server have anny fi;es
             if len(files) == 0:
-                # data1 = s.recv(4096)
+                # declaration of variable
                 dataToSend = {}
                 tmp = open('filewather.json', 'w')
                 tmp.close()
+                # adding information who ane where to send files
                 dataToSend['Owner'] = owner
                 dataToSend['path'] = path
                 print('Send information to server:', dataToSend)
+                # sending data to server
                 s.sendall(pickle.dumps(dataToSend))
+                # receiving data from server
                 while True:
                     data = s.recv(4096)
                     if data is None:
                         break
+                    # printing recived data fo troubleshooting purposes
                     print(pickle.loads(data))
                     try:
+                        # if data received from server is equal to end  function FileSender is called
                         if data.decode() == 'end':
                             return self.FileSender()
                     except:
                         pass
+                    # decoding data
                     data = pickle.loads(data)
+                    # if anny file is received writing process is started
                     if len(data['Data']) != 0:
                         for data in data['Data']:
                             f = open((path + '\\' + data['FileName']), "w")
                             f.writelines(data['Data'])
                             f.close()
-                    return self.FileSender(owner='Konrad', path='client_folder', host='192.168.8.137', port=8000)
+                    return self.FileSender(owner='Konrad', path='client_folder', host=server_ip, port=8000)
 
             # looking throw all files with are in folder and comparing them to dictionary
             for file in files:
@@ -321,16 +331,19 @@ class FileServer():
                         # if modification of file is that same like in dictionary we are assuming that it is old file
                         # and we won't upload it to server, so variable upload is set to False
                         upload = False
-                # if file is new we are proceeding to upload proces
+                # if file is new we are proceeding to upload process
                 if upload:
-
+                    # staring new thred for new file
                     t = threading.Thread(target=self.FileUploadToServer, args=(path, file, owner, s))
-                    print(t )
+                    # printing debug informatics about new thread 
+                    print(t)
                     # launching new thread
                     t.start()
-
+                    #  random sleep time is generating 
                     sleep(randint(1,15))
+                    # appending inflation files valus for new files
                     filepathmd5 = os.path.abspath(os.path.join(path, file))
+                    #  creating hash file function
                     hasher = md5()
                     with open(filepathmd5, 'rb') as afile:
                         buf = afile.read()
