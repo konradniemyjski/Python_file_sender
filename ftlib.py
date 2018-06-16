@@ -81,7 +81,7 @@ class FileServer():
                 return None
             # loading json file contains information about local files and when they where created.
             try:
-                with open( data['Owner'] +'.json') as data_file:
+                with open(data['Owner'] +'.json') as data_file:
                     data_item = json.load(data_file)
             except :
                 data_item = {}
@@ -93,20 +93,15 @@ class FileServer():
             # checking if file is new or it have already bean on the server if it is new file creation time is set to 0
             # if not then information from local file are keep in data_item
             print("keys: {} |||||| data['FileName'] ".format(data_item.keys(),data['FileName']))
-            if data['FileName'] in data_item.keys() :
-                data_item = data_item[data['FileName']]
-            else:
+            if data['FileName'] not in data_item.keys() :
                 data_item[data['FileName']] = float(0)
             print(data_item)
             # comparing local information and received from client
-            if isinstance(data_item, dict):
-                data_item = data_item[data['FileName']]
+            # if isinstance(data_item, dict):
+            #     data_item = data_item[data['FileName']]
 
-            if data_item < data['Creation_date']:
+            if data_item[data['FileName']] <= data['Creation_date']:
                 data_item[data['FileName']] = data['Creation_date']
-                # sending date to client
-                data_to_client = str(data_item).encode()
-                conn.send(data_to_client)
                 # making full file name path for writing purposes
                 fileName = os.path.dirname(os.path.abspath(__file__)) + '/' + (data['Owner'] + '/' + data['FileName'])
                 # creating file object
@@ -140,9 +135,9 @@ class FileServer():
                 print("Staring waiting for next file.")
             else:
                 # on the server is newer version of file send information to client about it
-                # conn.send('Sending'.encode())
+                conn.send('Sending'.encode())
                 # constructing full file name so we can use it to open file
-                file = '/home/konrad/FileTransfer/'+data['Owner']+'/'+data['FileName']
+                file = os.path.dirname(os.path.abspath(__file__))+data['Owner']+'/'+data['FileName']
                 # creating variable to send data
                 dataToSend = {}
                 with open(file, "r") as f:
@@ -191,8 +186,57 @@ class FileServer():
                 # launching new thread
                 t.start()
 
+    def FileUploadToServer(self,path, file, owner, s):
+        # we are opening it in  read mode so we don't need to decode it in future
+        with open((os.path.join(path, file)), "r") as f:
+            # reading file
+            data = f.readlines()
+            dataToSend = {}
+            # adding owner name
+            dataToSend['Owner'] = owner
+            # adding file name
+            dataToSend['FileName'] = file
+            # adding content of file
+            dataToSend['Data'] = data
+            # send file
+            print("[+] Sending file {}.".format(file))
+            # using picle to convert json to binaries
+            dataToSend['Creation_date'] = os.path.getctime((os.path.join(path, file)))
+            print(dataToSend)
+            s.sendall(pickle.dumps(dataToSend))
+            wait_for_data = False
+        while True:
+            data = s.recv(4096)
 
-    def FileSender(self, owner='me', path='.', host="192.168.8.137", port=8000):
+            if data is None:
+                break
+
+            if wait_for_data:
+                data = pickle.loads(data)
+                with open((os.path.join(path, file)), "r") as f:
+                    f.writelines(data['Data'])
+                break
+
+            if data.decode() == 'Sending':
+                wait_for_data = True
+            elif data.decode() == 'Next':
+                break
+
+        print("[-] Disconnected")
+        sleep(randint(1,15))
+        # filepathmd5 = os.path.abspath(os.path.join(path, file))
+        # hasher = md5()
+        # with open(filepathmd5, 'rb') as afile:
+        #     buf = afile.read()
+        #     hasher.update(buf)
+        # filewather[file] = hasher.hexdigest()
+        # # updating file so after shutdown we won't upload the same files
+        # with open('filewather.json', 'w') as outfile:
+        #     print()
+        #     json.dump(filewather, outfile)
+
+
+    def FileSender(self, owner='me', path='.', host="192.168.8.140", port=8000):
 
         from hashlib import md5
         print('Staring function FileSender.')
@@ -204,7 +248,7 @@ class FileServer():
         data = s.recv(4096)
         print(data.decode())
         print("[+] Connected with Server")
-        # main function used to checking is file are changed
+        # main function used to checking is file are changed`
         # main function used to checking is file are changed
         while True:
             # listing folder looking for content
@@ -229,7 +273,6 @@ class FileServer():
                             return self.FileSender()
                     except:
                         pass
-                    print('a')
                     data = pickle.loads(data)
                     if len(data['Data']) != 0:
                         for data in data['Data']:
@@ -261,6 +304,7 @@ class FileServer():
 
                 if 'filewather.json' == file:
                     break
+                    break
                 print('[*] Checkin file {}.'.format(file))
                 # firs test is checking list of keys, if file is in key we proceed to next steep
                 if filewather is None:
@@ -279,37 +323,13 @@ class FileServer():
                         upload = False
                 # if file is new we are proceeding to upload proces
                 if upload:
-                    # we are opening it in  read mode so we don't need to decode it in future
-                    with open((os.path.join(path, file)), "r") as f:
-                        # reading file
-                        data = f.readlines()
-                        dataToSend = {}
-                        # adding owner name
-                        dataToSend['Owner'] = owner
-                        # adding file name
-                        dataToSend['FileName'] = file
-                        # adding content of file
-                        dataToSend['Data'] = data
-                        # send file
-                        print("[+] Sending file {}.".format(file))
-                        # using picle to convert json to binaries
-                        dataToSend['Creation_date'] = os.path.getctime((os.path.join(path, file)))
-                        print(dataToSend)
-                        s.sendall(pickle.dumps(dataToSend))
-                        while True:
-                            data = s.recv(4096)
-                            if data is None:
-                                break
-                            try:
-                                print(data)
-                                data = pickle.loads(data)
-                                print(data)
-                                break
-                            except:
-                                f.write()
-                        print("[-] Disconnected")
-                        # sleep(randint(1,15))
-                    # updating variable so we won't upload second time the same file
+
+                    t = threading.Thread(target=self.FileUploadToServer, args=(path, file, owner, s))
+                    print(t )
+                    # launching new thread
+                    t.start()
+
+                    sleep(randint(1,15))
                     filepathmd5 = os.path.abspath(os.path.join(path, file))
                     hasher = md5()
                     with open(filepathmd5, 'rb') as afile:
